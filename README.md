@@ -1,2 +1,2 @@
 # Data-Work
-Data Projects as an online portfolio
+Online portfolio of data analysis and machine learning scripts.
