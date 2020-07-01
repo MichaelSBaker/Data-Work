@@ -1,2 +1,2 @@
 # Data-Work
-Online portfolio of data analysis and machine learning scripts.
+Beginnings of an online portfolio of data analysis and machine learning scripts.
