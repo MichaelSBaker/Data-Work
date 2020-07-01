@@ -1,0 +1,356 @@
+---
+title: "MATH2349 Semester 1, 2020"
+author: "Michael Baker s3544106"
+subtitle: Assignment 2
+output:
+  pdf_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+---
+
+## Required packages 
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(xlsx)
+library(outliers)
+```
+
+## Executive Summary 
+
+The pre-processing of the two data sets begins by tidying the datasets, so they can be merged.  This is done by correctly naming each column, removing the unnecessary columns, and correctly tidying the datapoints as they were organised horizontally by year instead of been contained in a single column. Following this the datasets are merged by the combination of the Countries and year Columns.
+  
+We then reassign each column the correct data types, creating 2 factor and 3 numerical columns.
+  
+Next, we cleaned up the data, removing NA's and any Country that contained 9 or less data points for either of the columns *No. of Convictions* and *Unemployment Rate* and filling them in by using a linear regression model. This method was employed as having at least 10 datapoints position before and after with respect to time would allow for a more accurate generation of replacements for the missing values.
+  
+Following that we checked for outliers with respect to each Conviction Type and Country. This was done by generating a z score and testing if any of the datapoints we outside a score of 3. 
+  
+To allow for easier analysis between given counties of either the *No. of Convictions* or the *Unemployment Rate* we normalize the data between 0 and 1 as some of the countries like Germany had Theft counts in the 100000 per year which would make it difficult to compare the Montenegro which never had a year go over 700 incidents. This transformation was completed through a simple self-made function looped through each of the datapoints pertaining to the pairing of *Type of Conviction* and *Country*.
+  
+Finally using the Unemployment Rate and No. of conviction columns, I generated new columns representing the average of each variable over the given years for each Type of Conviction, country pairing.
+
+
+## Data + Initial Tidy
+
+The two datasets that will be used in this report are the **Unemployment Rate** as well as the **Conviction count by type of offence** both expressed by country and year. These datasets were sourced from *https://w3.unece.org/PXWeb/en*.
+
+The variables contained inside each dataset are as followed:
+
+Unemployment_Dataset
+
+* **Country** - The country that the statistics refer to.
+* **Year** - The year the statistics were taken from
+* **Unemployment Rate** - The unemployment rate for the given country and year
+
+Crime_data
+
+* **Type of Conviction** - The type of conviction been measured (Drug Crimes and Theft)
+* **Both Sexes** - A factor used to express the which data points are refering to both sexes 
+* **County** - County where the conviction was given
+* **Year** - The year the conviction was given
+* **Convictions** - Count of Convictions for the perscribed crime
+
+Conviction Description : a formal declaration by the verdict of a jury or the decision of a judge in a court of law that someone is guilty of a criminal offence.
+
+These datasets will be pre-porcessed with respect to the pairing of the Type of Conviction and Country. Where as future steps will show the datapoints over the given timeframe of years are analysied and processed together.
+
+From the output of head(Crime_data) and head(Unemployment_data) it can be shown that the dataset it not in a state in which we can merge the datasets using the Country variable.
+
+To fix this both datasets will have there variable titles properly assigned,and the datasets will be tidied before merging.
+Both datasets contain untidy data, in the form of the year in which the data is recorded, they are displayed as indivdual columns rather than a single one. This is resolved through the use of the gather function as detailed below.
+
+To fix the Unemployment Dataset to make it mergable, the columns must be renamed with the contents of row 1. Then the first row is removed as it has become the column names. Finally gathering all the Unemployment Rates under one column using the years in whch the rates were recorded as the key to gather upon and removing the 3 unused column present in the dataset.
+
+To fix the Conviction Dataset the first four columns are assigned names as the initial datasets has combined all the names into one column. Then using the same method as the Unemployment dataset replacing the column names with that of the content of the first row and removing the aforementioned row. The final steps involve removing few unused columns located after the 2017 column as well as removing the **Both sexes** and *Convictions* columns as they are both redundent columns, that provide no information about analysing the data.
+Filling out the *Type if Convictions* column as they will become factors and thus instead of having to filling **13000** row it will only require **700**. Lasty the dataset has the gather function applied to it, converging all the counts of the convictions into a single column "No. of Convictions" by the key Year.
+
+After the two datasets have been tidied they are merged together upon the common features *Countries* and *Year*. The method of merging was through inner_join, this didnt matter for the countries feature as both datasets contain the same Countries. However they did differ with the years the data was taken over. In order to make up for the difference in years, only those which were shared by both were taken into account, as having data on crimes from a given time period but no unemployment data to compare with would not output any new significant data.
+
+
+```{r}
+Conviction_Data <- read.xlsx("c0000315.xlsx",1, stringsAsFactors = FALSE)
+Unemployment_Data <- read.xlsx("c0000866.xlsx",1, stringsAsFactors = FALSE)
+
+head(Conviction_Data)
+head(Unemployment_Data)
+
+Unemployment_Data[1,1]<- "Countries"
+colnames(Unemployment_Data) <- as.character(unlist(Unemployment_Data[1,]))
+Unemployment_Data <- Unemployment_Data[-1,]
+
+Unemployment_Data <- Unemployment_Data %>% gather('1990','1991','1992','1993','1994','1995','1996','1997','1998','1999','2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019', key = "Year", value = "Unemployment Rate")
+
+Unemployment_Data <- Unemployment_Data[,c(1,5,6)]
+head(Unemployment_Data)
+
+Conviction_Data[1,1:4] <-c("Type of Conviction","Sex","Count of Convictions","Countries")
+colnames(Conviction_Data) <- as.character(unlist(Conviction_Data[1,]))
+Conviction_Data <- Conviction_Data[-1,]
+head(Conviction_Data)
+
+Conviction_Data <- Conviction_Data[,c(1,4:25)]
+
+Conviction_Data[2:50,1] <- Conviction_Data[1,1]
+Conviction_Data[52:100,1] <- Conviction_Data[51,1]
+
+Conviction_Data <- Conviction_Data %>% gather('1980','1990','1995','2000','2001','2002','2003','2004','2005','2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017',key = "Year", value = "No. of Convictions")
+
+
+Merged_Data <- inner_join(Conviction_Data, Unemployment_Data, by = c("Countries","Year"))
+head(Merged_Data)
+```
+
+## Understand 
+
+Through the *str()* function the Merged Dataset is shown to contains 5 character variables. This does not match the actual data types of the variables, to fix this, the *Types of Convictions* and *Countries* need to be converted to Factors using the as.factor(), the *No. of Convictions* and *Year* needs to be converted to an integer using as.integer() and *Unemployment rate* needs to be converted to a double using as.double().
+
+In order to correctly set the factor levels the columns were filled with there respective factors while as a character data type then converted. However this ony solve part of the problem, because of junk data stored in the factor columns there will be addition levels generated for each so to counter this we will remove the redundent rows so as to correct the levels of each factor.
+
+To do this the dataset will be filtered by only keeping rows that have assigned values inside the *Countries* columns as they have been filled out for all the necessary rows prior.
+
+
+```{r}
+
+str(Merged_Data)
+
+Merged_Data$`Unemployment Rate` <- as.double(Merged_Data$`Unemployment Rate`)
+Merged_Data$`No. of Convictions` <- as.integer(Merged_Data$`No. of Convictions`)
+Merged_Data$Year <- as.integer(Merged_Data$Year)
+
+Merged_Data <- Merged_Data %>% filter(!Countries == "")
+
+Merged_Data$`Type of Conviction` <- as.factor(Merged_Data$`Type of Conviction`)
+Merged_Data$Countries <- as.factor(Merged_Data$Countries)
+
+str(Merged_Data)
+
+```
+
+##	Scan I 
+From the unqiue function check we can see that the *Type of Conviction*, *Countries* and *Year* features dont contain any NA or different values then expected.
+
+Next start by scanning the years and counting the sum of NA present. We can see from na_Count_Unemployment that the years 1990 and 1995 both have significantly more NA's recorded, while na_Count_Convictions does also have a higher number of missing values they are similar to those of the more recently years 2016 and 2017. However given the fact that excluding these two years, the rest of the dataset is contained periodicaclly 1 year apart within years from 2000 - 2017 we can use these consecutive years to fillout the missing values for the higher NA counts. Where as 1990 and 1995 both have 5 year gaps with no information inbetween thus they will be removed.
+
+Next we count the number NA present for each country and remove those those where >= 10 NA present, this is so there is garanteed enough information to accurally generate a model to predict the missing values.
+
+Finally using a **linear regression model** inside a for loop we generate the missing values based off the present values for that country in the preceding and future years from the given missing data. This is done for both the *No. of Convictions* and *Unemployed Rate* features.
+The **linear regression model** was used as it is a relativly accurate way to predict unknown variables based off a given trend. In this case the progression of data points for each pairing of Type of conviction and Country over the years.
+
+```{r}
+unique(Merged_Data$`Type of Conviction`)
+unique(Merged_Data$Countries)
+unique(Merged_Data$Year)
+
+# Remove years 1990 and 1995
+c <- unique(Merged_Data$Year)
+y <- 1
+na_Count_Convictions <- 0
+na_Count_Unemployment <- 0
+i <- 0
+for (i in c) {
+  na_Count_Convictions[y] <- sum(is.na(Merged_Data$`No. of Convictions`[Merged_Data$Year == i]))
+  na_Count_Unemployment[y] <- sum(is.na(Merged_Data$`Unemployment Rate`[Merged_Data$Year == i]))
+  y=y+1
+}
+print(na_Count_Convictions)
+print(na_Count_Unemployment)
+
+Merged_Data <- Merged_Data[!(Merged_Data$Year == 1990 | Merged_Data$Year == 1995),]
+unique(Merged_Data$Year)
+
+# View the number of remaining NA's
+aggregate(`No. of Convictions` ~`Type of Conviction`, data=Merged_Data, function(x) {sum(is.na(x))}, na.action = NULL)
+aggregate(`Unemployment Rate` ~`Type of Conviction`, data=Merged_Data, function(x) {sum(is.na(x))}, na.action = NULL)
+
+# Remove all Countries which contained 10 or morw NA's either No. of Convictions or Unemployment Rate
+naCounts <- Merged_Data %>% group_by(`Type of Conviction`, Countries) %>% summarise_each(funs(sum(is.na(.))))
+
+Merged_Data["Conviction naCount"] <- naCounts$`No. of Convictions`
+Merged_Data["Unemployment naCOunt"] <- naCounts$`Unemployment Rate`
+Merged_Data <- Merged_Data[Merged_Data$`Conviction naCount` < 10 & Merged_Data$`Unemployment naCOunt` < 10,]
+Merged_Data <- Merged_Data[1:5]
+
+# Using a linear regression model to generate missing values
+Ind <- function(t) {
+  x <- dim(length(t))
+  x[which(!is.na(t))] = 1
+  x[which(is.na(t))] = 0
+  return(x)
+}
+
+#Coviction Missing Values
+
+Merged_Data <- Merged_Data %>% arrange(desc(`Type of Conviction`),Countries)
+
+Count <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    if (all(!is.na(temp$`No. of Convictions`))==FALSE){
+      temp["isNA"] <- Ind(temp$`No. of Convictions`)
+      regression <- lm(`No. of Convictions`~Year, data = temp)
+      for (k in 1:nrow(temp)) {
+        if (temp$isNA[k] == 0) {
+          Merged_Data$`No. of Convictions`[Count] <- regression$coefficients[1] + regression$coefficients[2]*Merged_Data$Year[Count]
+        }
+        Count <- Count + 1
+      }
+    } else {
+      Count <- Count + 18
+    }
+  }
+}
+
+# Unemployment Missing Values
+
+Merged_Data <- Merged_Data %>% arrange(desc(`Type of Conviction`),Countries)
+
+Count <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    if (all(!is.na(temp$`Unemployment Rate`))==FALSE){
+      temp["isNA"] <- Ind(temp$`Unemployment Rate`)
+      regression <- lm(`Unemployment Rate`~Year, data = temp)
+      for (k in 1:nrow(temp)) {
+        if (temp$isNA[k] == 0) {
+          Merged_Data$`Unemployment Rate`[Count] <- regression$coefficients[1] + regression$coefficients[2]*Merged_Data$Year[Count]
+        }
+        Count <- Count + 1
+      }
+    } else {
+      Count <- Count + 18
+    }
+  }
+}
+Merged_Data$`No. of Convictions` <- as.integer(Merged_Data$`No. of Convictions`)
+
+# View the number of remaining NA's
+aggregate(`No. of Convictions` ~`Type of Conviction`, data=Merged_Data, function(x) {sum(is.na(x))}, na.action = NULL)
+aggregate(`Unemployment Rate` ~`Type of Conviction`, data=Merged_Data, function(x) {sum(is.na(x))}, na.action = NULL)
+
+head(Merged_Data)
+
+```
+
+##	Scan II
+
+To test the dataset for outliers I used the z-scores method. I chose this over the boxplot method as it would have generated a boxplot for each pair of factor permutations. Which would have been informative but unnecessary.
+This was done through a nested loop to generate each of the factor permuations. Then testing the generated z-scores to see if they where greter than 3. If there was permutation that contained a datapoint/s z-score > 3 then it would be stored inside the Outliers lists **Outliers_Convictions** and **Outliers_Unemployment**.
+We can see from the head() function applied to each of the outlier lists that tey both contain nothing and thus the dayaset containers no outliers.
+
+```{r}
+# This is the R chunk for the Scan II
+z <- 1
+Outliers_Convictions <- c()
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    z.score <- temp$`No. of Convictions` %>% scores(type = "z")
+    if(!is.null(nrow(which(abs(z.score) > 3)))){
+      Outliers_Convictions[z] <- c(i, j)
+      z <- z + 1
+    }
+  }
+}
+head(Outliers_Convictions)
+
+z <- 1
+Outliers_Unemployment <- c()
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    z.score <- temp$`Unemployment Rate` %>% scores(type = "z")
+    if(!is.null(nrow(which(abs(z.score) > 3)))){
+      Outliers_Unemployment[z] <- c(i, j)
+      z <- z + 1
+    }
+  }
+}
+head(Outliers_Unemployment)
+```
+
+
+##	Transform 
+
+The tranformation performed on the dataset was a normalization. Re-scaling the values of **No. of Convictions** and **Unemployment Rate** to between 0 and 1, allowing for the comparision of countries whose datapoints we vastly different. This also removes an unintended side effects from filling in the missing values such as negative values by scaling them up to between the specified range. 
+
+```{r}
+# This is the R chunk for the Transform Section
+normalize <- function(t) {
+  x <- (t - min(t))/(max(t)-min(t))
+  return(x)
+}
+
+Count <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    temp$`No. of Convictions` <- normalize(temp$`No. of Convictions`)
+    for (k in 1:nrow(temp)) {
+      Merged_Data$`No. of Convictions`[Count] <- temp$`No. of Convictions`[k]
+      Count <- Count + 1
+    }
+  }
+}
+
+Count <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    temp <- Merged_Data[which(Merged_Data$`Type of Conviction` == i & Merged_Data$Countries == j),]
+    temp$`Unemployment Rate` <- normalize(temp$`Unemployment Rate`)
+    for (k in 1:nrow(temp)) {
+      Merged_Data$`Unemployment Rate`[Count] <- temp$`Unemployment Rate`[k]
+      Count <- Count + 1
+    }
+  }
+}
+
+head(Merged_Data)
+
+```
+
+##	Creation of a New Variable
+
+I created two new variable called **Avg Rate** and **Avg Conviction Count**, which is the average Unemployment Rate and No. of Convictions for a given Type of Conviction and Country post tranformation as generating this varible earlier would have not provided any useful information. This was done by applying the group_by function to the two factors in the order in which they are in the dataset. Then applying the summarise function specifing the mean values. Then by inserting it into the dataset through a for loop. This allows for the comparision of datapoints from any given year to the overall average from a given country. 
+
+```{r}
+Avg_Rate <- Merged_Data %>% group_by(`Type of Conviction`,Countries) %>% summarise(`Avg Rate` = mean(`Unemployment Rate`))
+Avg_Rate <- Avg_Rate %>% arrange(desc(`Type of Conviction`),Countries)
+
+Merged_Data["Avg Rate"] <- NA
+
+Count <- 1
+loop <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    for (k in 1:nrow(temp)) {
+      Merged_Data$`Avg Rate`[Count] <- Avg_Rate$`Avg Rate`[loop]
+      Count <- Count + 1
+    }
+    loop <- loop + 1
+  }
+}
+
+Avg_Conviction_Count <- Merged_Data %>% group_by(`Type of Conviction`,Countries) %>% summarise(`Avg Conviction Count` = mean(`No. of Convictions`))
+Avg_Conviction_Count <- Avg_Conviction_Count %>% arrange(desc(`Type of Conviction`),Countries)
+
+Merged_Data["Avg Conviction Count"] <- NA
+
+Count <- 1
+loop <- 1
+for (i in unique(Merged_Data$`Type of Conviction`)) {
+  for (j in unique(Merged_Data$Countries)) {
+    for (k in 1:nrow(temp)) {
+      Merged_Data$`Avg Conviction Count`[Count] <- Avg_Conviction_Count$`Avg Conviction Count`[loop]
+      Count <- Count + 1
+    }
+    loop <- loop + 1
+  }
+}
+
+head(Merged_Data)
+```
